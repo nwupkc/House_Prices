@@ -1,0 +1,120 @@
+---
+title: "House_Prices"
+author: "Sungwan Kim"
+date: "9/7/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(tidyverse)
+library(Amelia)
+library(rpart)
+library(glmnet)
+```
+
+```{r}
+train <- read.csv('train.csv', stringsAsFactors = F)
+test <- read.csv('test.csv', stringsAsFactors = F)
+
+test$SalePrice <- rep(NA, 1459)
+
+df <- rbind(train, test)
+dim(df)
+str(df)
+```
+We are dealing with high-dimensional data and this implies that there is a danger of overfitting.
+
+The big part of this project will be dealing with all the missing values in the data. Depending on what method we use, there will be huge variability in precision of prediction accuracy. With so many missing values it is not advisable to drop all the NAs which will leave us with reduced sample size.
+```{r}
+missmap(df[,1:80],
+        main = "Missing values in Housing Prices Dataset",
+        y.labels = NULL,
+        y.at = NULL)
+
+sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
+```
+
+## Missing Value Imputation
+
+Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition tells me that people did their due dilligence while collecting this data since houses are significant assets in average households.
+
+and not all other variables are informative in predicting the missing values. While data can be missing due to mistakes in data imputation, we cannot dimiss a possibility that missing values are missing because they are truly not applicable. With these considerations in mind, let's look at all the missing values one by one.
+
+```{r}
+df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
+df[which(df$PoolArea == 0), 'PoolQC'] <- 'None'
+df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
+df[, c('PoolQC', 'PoolArea')] %>% 
+  group_by(PoolQC) %>% 
+  summarise(mean = mean(PoolArea), count = n())
+df[c(2421, 2504), 'PoolQC'] <- 'Ex'
+df[2600, 'PoolQC'] <- 'Fa'
+sum(is.na(df$PoolQC))
+```
+```{r}
+ggplot(df, aes(MiscFeature)) + geom_bar()
+table(df$MiscFeature)
+df[which(is.na(df$MiscFeature)), 'MiscFeature'] <- 'None'
+sum(is.na(df$MiscFeature))
+```
+
+```{r}
+table(df$Alley)
+df[which(is.na(df$Alley)), 'Alley'] <- 'None'
+sum(is.na(df$Alley))
+```
+
+```{r}
+table(df$Fence)
+df[which(is.na(df$Fence)), 'Fence'] <- 'None'
+sum(is.na(df$Fence))
+```
+
+```{r}
+table(df$FireplaceQu)
+df[which(is.na(df$FireplaceQu)), c('FireplaceQu', 'Fireplaces')]
+df[which(df$Fireplaces == 0), 'FireplaceQu'] <- 'None'
+sum(is.na(df$FireplaceQu))
+```
+
+We have to make a judgement call as missing values constituted to about 15% of the number of observations. 
+```{r}
+ggplot(df, aes(LotFrontage)) + geom_density()
+
+df$Imputed <- 'Original'
+df[which(is.na(df$LotFrontage)),]$Imputed <- 'Imputed'
+
+lot.rpart <- rpart(LotFrontage ~ LotArea + LotShape + LotConfig, data = df[!is.na(df$LotFrontage), c('LotFrontage', 'LotArea', 'LotShape', 'LotConfig')], method = "anova", na.action=na.omit)
+
+df$LotFrontage[is.na(df$LotFrontage)] <- round(predict(lot.rpart, df[is.na(df$LotFrontage), c('LotFrontage', 'LotArea', 'LotShape', 'LotConfig')]))
+
+ggplot(df, aes(LotFrontage, color = Imputed)) + geom_density()
+
+sum(is.na(df$LotFrontage))
+```
+
+
+
+##Subset Selection
+
+## Shrinkage Methods
+
+### Ridge Regression and the Lasso
+
+```{r}
+x <- model.matrix(SalePrice~.,train)
+y <- train$SalePrice
+
+ridge.mod <- glmnet(x, y, alpha = 0, lambda)
+```
+
+
+## Dimension Reduction Methods
+
+### Principal Components Regression (PCA)
