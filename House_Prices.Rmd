@@ -44,6 +44,8 @@ sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
 
 Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition tells me that people did their due dilligence while collecting this data since houses are significant assets in average households.
 
+Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to. Given that, we will have to look at all the varialbles with missing values however painstaking it may be.
+
 and not all other variables are informative in predicting the missing values. While data can be missing due to mistakes in data imputation, we cannot dimiss a possibility that missing values are missing because they are truly not applicable. With these considerations in mind, let's look at all the missing values one by one.
 
 ```{r}
@@ -96,7 +98,35 @@ df$LotFrontage[is.na(df$LotFrontage)] <- round(predict(lot.rpart, df[is.na(df$Lo
 
 ggplot(df, aes(LotFrontage, color = Imputed)) + geom_density()
 
+df <- df[, -81]
+
 sum(is.na(df$LotFrontage))
+```
+
+```{r}
+df[which(is.na(df$GarageYrBlt)), c('GarageType', 'GarageYrBlt', 'GarageFinish', 'GarageCars', 'GarageArea', 'GarageQual', 'GarageCond')]
+df[which(df$GarageArea == 0),]$GarageType <- 'None'
+df[which(df$GarageArea == 0),]$GarageFinish <- 'None'
+df[which(df$GarageArea == 0),]$GarageQual <- 'None'
+df[which(df$GarageArea == 0),]$GarageCond <- 'None'
+
+sum(df$GarageYrBlt == df$YearBuilt, na.rm = T)
+df[which(is.na(df$GarageYrBlt)),]$GarageYrBlt <- df[which(is.na(df$GarageYrBlt)),]$YearBuilt
+
+df[which(is.na(df$GarageFinish)), c('GarageType', 'GarageYrBlt', 'GarageFinish', 'GarageCars', 'GarageArea', 'GarageQual', 'GarageCond')]
+
+table(as.factor(df$GarageFinish[df$GarageType == 'Detchd' & df$GarageYrBlt == 1910]))
+table(as.factor(df$GarageQual[df$GarageType == 'Detchd' & df$GarageYrBlt == 1910]))
+table(as.factor(df$GarageQual[df$GarageType == 'Detchd' & df$GarageYrBlt == 1910]))
+df[2127, 'GarageFinish'] <- 'Unf'
+df[2127, 'GarageQual'] <- 'TA'
+df[2127, 'GarageCond'] <- 'Fa'
+
+df[2577, 'GarageFinish'] <- 'None'
+df[2577, 'GarageCars'] <- 0
+df[2577, 'GarageArea'] <- 0
+df[2577, 'GarageQual'] <- 'None'
+df[2577, 'GarageCond'] <- 'None'
 ```
 
 
