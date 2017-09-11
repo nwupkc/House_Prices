@@ -9,28 +9,27 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-```{r}
+```{r, message = FALSE}
 library(tidyverse)
 library(Amelia)
 library(rpart)
 library(glmnet)
 ```
 
-```{r}
+```{r, message = FALSE}
 train <- read.csv('train.csv', stringsAsFactors = F)
 test <- read.csv('test.csv', stringsAsFactors = F)
-
 test$SalePrice <- rep(NA, 1459)
-
 df <- rbind(train, test)
 dim(df)
 str(df)
 ```
+
+
 We are dealing with high-dimensional data and this implies that there is a danger of overfitting.
 
 The big part of this project will be dealing with all the missing values in the data. Depending on what method we use, there will be huge variability in precision of prediction accuracy. With so many missing values it is not advisable to drop all the NAs which will leave us with reduced sample size.
+
 ```{r}
 missmap(df[,1:80],
         main = "Missing values in Housing Prices Dataset",
@@ -44,9 +43,11 @@ sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
 
 Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition tells me that people did their due dilligence while collecting this data since houses are significant assets in average households.
 
-Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to. Given that, we will have to look at all the varialbles with missing values however painstaking it may be.
+Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to do so. Given that, we will have to look at all the varialbles with missing values however painstaking it may be.
 
-and not all other variables are informative in predicting the missing values. While data can be missing due to mistakes in data imputation, we cannot dimiss a possibility that missing values are missing because they are truly not applicable. With these considerations in mind, let's look at all the missing values one by one.
+Not all variables are informative in predicting the missing values. While data can be missing due to mistakes in data imputation, we cannot dimiss a possibility that missing values are missing because they are truly not applicable. With these considerations in mind, let's look at all the missing values one by one.
+
+I have been inspired by kernels on Kaggle especially for missing value imputation. You will notice that I followed closely for majority of the variables because I did not want to reinvent the wheels. However, I have looked closely at the assumptions made and see if there were better ways impute NAs. I am in no way claiming that my work is superior to that of others. I really appreciate all the hard works they have put into thinking and analyzing this data set. While I believe that other people used valid methods on sound assumptions, I did not hesitate to change things up when I believed there is a better way to do things in my opinion.
 
 ```{r}
 df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
@@ -54,7 +55,7 @@ df[which(df$PoolArea == 0), 'PoolQC'] <- 'None'
 df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
 df[, c('PoolQC', 'PoolArea')] %>% 
   group_by(PoolQC) %>% 
-  summarise(mean = mean(PoolArea), count = n())
+  summarise(median = median(PoolArea), count = n())
 df[c(2421, 2504), 'PoolQC'] <- 'Ex'
 df[2600, 'PoolQC'] <- 'Fa'
 sum(is.na(df$PoolQC))
@@ -129,7 +130,77 @@ df[2577, 'GarageQual'] <- 'None'
 df[2577, 'GarageCond'] <- 'None'
 ```
 
+```{r}
+df[which(is.na(df$BsmtExposure)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtQual <- 'None'
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtCond <- 'None'
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtExposure <- 'None'
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFinType1 <- 'None'
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFinType2 <- 'None'
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtUnfSF <- 0
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$TotalBsmtSF <- 0
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFullBath <- 0
+df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtHalfBath <- 0
+table(df$BsmtExposure)
+df[c(949, 1488, 2349),]$BsmtExposure <- 'No'
+df[which(is.na(df$BsmtCond)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
+```
 
+```{r}
+df[which(is.na(df$MasVnrType)), c('MasVnrType', 'MasVnrArea')]
+df[which(is.na(df$MasVnrArea)),]$MasVnrType <- 'None'
+df[which(is.na(df$MasVnrArea)),]$MasVnrArea <- 0
+df[, c('MasVnrType', 'MasVnrArea')] %>% 
+  group_by(MasVnrType) %>% 
+  summarise(median = median(MasVnrArea), count = n())
+df[2611, ]$MasVnrType <- 'BrkFace'
+```
+
+```{r}
+df[which(is.na(df$MSZoning)), c('MSZoning', 'MSSubClass')]
+df[, c('MSZoning', 'MSSubClass')] %>% 
+  group_by(MSZoning) %>% 
+  summarise(mean = mean(MSSubClass), count = n())
+df[c(1916, 2217, 2905),]$MSZoning <- 'RL'
+df[2251,]$MSZoning <- 'RM'
+```
+
+```{r}
+table(df$Utilities)
+df[which(is.na(df$Utilities)),]$Utilities <- 'AllPub'
+```
+
+```{r}
+table(df$Functional)
+df[which(is.na(df$Functional)),]$Functional <- 'Typ'
+```
+
+```{r}
+df[which(is.na(df$Exterior1st) | is.na(df$Exterior2nd)), c('Exterior1st', 'Exterior2nd')]
+table(df$Exterior1st)
+table(df$Exterior2nd)
+df[which(is.na(df$Exterior1st)),]$Exterior1st <- 'VinylSd'
+df[which(is.na(df$Exterior2nd)),]$Exterior2nd <- 'VinylSd'
+```
+
+```{r}
+table(df$SaleType)
+df[which(is.na(df$SaleType)),]$SaleType <- 'WD'
+```
+
+```{r}
+table(df$Electrical)
+df[which(is.na(df$Electrical)),]$Electrical <- 'SBrkr'
+```
+
+```{r}
+table(as.factor(df$KitchenQual))
+df[which(is.na(df$KitchenQual)),]$KitchenQual <- 'TA'
+```
+
+```{r}
+sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
+```
 
 ##Subset Selection
 
