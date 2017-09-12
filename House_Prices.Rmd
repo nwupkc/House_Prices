@@ -58,32 +58,25 @@ df[, c('PoolQC', 'PoolArea')] %>%
   summarise(median = median(PoolArea), count = n())
 df[c(2421, 2504), 'PoolQC'] <- 'Ex'
 df[2600, 'PoolQC'] <- 'Fa'
-sum(is.na(df$PoolQC))
 ```
 ```{r}
-ggplot(df, aes(MiscFeature)) + geom_bar()
 table(df$MiscFeature)
 df[which(is.na(df$MiscFeature)), 'MiscFeature'] <- 'None'
-sum(is.na(df$MiscFeature))
 ```
 
 ```{r}
 table(df$Alley)
 df[which(is.na(df$Alley)), 'Alley'] <- 'None'
-sum(is.na(df$Alley))
 ```
 
 ```{r}
 table(df$Fence)
 df[which(is.na(df$Fence)), 'Fence'] <- 'None'
-sum(is.na(df$Fence))
 ```
 
 ```{r}
-table(df$FireplaceQu)
 df[which(is.na(df$FireplaceQu)), c('FireplaceQu', 'Fireplaces')]
 df[which(df$Fireplaces == 0), 'FireplaceQu'] <- 'None'
-sum(is.na(df$FireplaceQu))
 ```
 
 We have to make a judgement call as missing values constituted to about 15% of the number of observations. 
@@ -131,19 +124,50 @@ df[2577, 'GarageCond'] <- 'None'
 ```
 
 ```{r}
-df[which(is.na(df$BsmtExposure)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtQual <- 'None'
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtCond <- 'None'
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtExposure <- 'None'
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFinType1 <- 'None'
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFinType2 <- 'None'
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtUnfSF <- 0
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$TotalBsmtSF <- 0
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtFullBath <- 0
-df[which(df$BsmtFinSF1 == 0 & df$BsmtFinSF2 == 0),]$BsmtHalfBath <- 0
-table(df$BsmtExposure)
-df[c(949, 1488, 2349),]$BsmtExposure <- 'No'
-df[which(is.na(df$BsmtCond)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
+df[which(is.na(df$BsmtExposure) | is.na(df$BsmtCond)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtQual <- 'None'
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtCond <- 'None'
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtExposure <- 'None'
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtFinType1 <- 'None'
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtFinType2 <- 'None'
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtUnfSF <- 0
+df[c(which(df$TotalBsmtSF == 0), 2121),]$TotalBsmtSF <- 0
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtFullBath <- 0
+df[c(which(df$TotalBsmtSF == 0), 2121),]$BsmtHalfBath <- 0
+df[(which(is.na(df$BsmtFinSF1))),]$BsmtFinSF1 <- 0
+df[(which(is.na(df$BsmtFinSF2))),]$BsmtFinSF2 <- 0
+
+df[which(is.na(df$BsmtExposure) | is.na(df$BsmtCond)), c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')]
+
+col.pred <- c('BsmtQual', 'BsmtCond', 'BsmtExposure',  'BsmtFinType1', 'BsmtFinSF1', 'BsmtFinType2', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath')
+BsmtQual.rpart <- rpart(as.factor(BsmtQual) ~ .,
+                           data = df[!is.na(df$BsmtQual),col.pred], 
+                           method = "class", 
+                           na.action = na.omit)
+df$BsmtQual[is.na(df$BsmtQual)] <- as.character(predict(BsmtQual.rpart, 
+                                           df[is.na(df$BsmtQual), col.pred], 
+                                           type = "class"))
+BsmtCond.rpart <- rpart(as.factor(BsmtCond) ~ .,
+                           data = df[!is.na(df$BsmtCond),col.pred], 
+                           method = "class", 
+                           na.action = na.omit)
+df$BsmtCond[is.na(df$BsmtCond)] <- as.character(predict(BsmtCond.rpart, 
+                                           df[is.na(df$BsmtCond), col.pred], 
+                                           type = "class"))
+BsmtExposure.rpart <- rpart(as.factor(BsmtExposure) ~ .,
+                           data = df[!is.na(df$BsmtExposure),col.pred], 
+                           method = "class", 
+                           na.action=na.omit)
+df$BsmtExposure[is.na(df$BsmtExposure)] <- as.character(predict(BsmtExposure.rpart,       
+                                      df[is.na(df$BsmtExposure),col.pred], 
+                                      type="class"))
+BsmtFinType2.rpart <- rpart(as.factor(BsmtFinType2) ~ .,
+                           data = df[!is.na(df$BsmtFinType2),col.pred], 
+                           method = "class", 
+                           na.action=na.omit)
+df$BsmtFinType2[is.na(df$BsmtFinType2)] <- as.character(predict(BsmtFinType2.rpart,       
+                                      df[is.na(df$BsmtFinType2),col.pred], 
+                                      type="class"))
 ```
 
 ```{r}
