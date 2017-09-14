@@ -329,7 +329,7 @@ for(j in 1:k){
 ### Ridge Regression and the Lasso
 
 ```{r}
-x <- model.matrix(SalePrice~.-Id, train)
+x <- model.matrix(SalePrice ~ ., train)[,-1]
 y <- train$SalePrice
 grid <- 10 ^ seq(10, -2, length = 100)
 ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
@@ -340,6 +340,41 @@ sqrt(sum(coef(ridge.mod)[-1,50]^2))
 ridge.mod$lambda[60]
 coef(ridge.mod)[,60]
 sqrt(sum(coef(ridge.mod)[-1,60]^2))
+predict(ridge.mod, s = 50, type = "coefficients")[1:260,]
+set.seed(1)
+train3 <- sample(1:nrow(x), nrow(x)/2)
+test3 <- (-train3)
+y.test <- y[test3]
+ridge.mod <- glmnet(x[train3,], y[train3], alpha = 0, thres = 1e-12)
+ridge.pred <- predict(ridge.mod, s = 4, newx = x[test3,])
+mean((ridge.pred - y.test)^2)
+mean((mean(y[train3])-y.test)^2)
+ridge.pred <- predict(ridge.mod, s = 0, newx = x[test3,], exact = T)
+mean((ridge.pred - y.test)^2)
+lm(y ~ x, subset = train3)
+predict(ridge.mod, s = 0, exact = T, type = "coefficients")[1:260,]
+set.seed(1)
+cv.out <- cv.glmnet(x[train3,],  y[train3], alpha = 0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+ridge.pred <- predict(ridge.mod, s = bestlam, newx = x[test3,])
+mean((ridge.pred - y.test)^2)
+out <- glmnet(x, y, alpha = 0)
+predict(out, type = "coefficients", s = bestlam)[1:260,]
+```
+```{r}
+lasso.mod <- glmnet(x[train3,], y[train3], alpha = 1, lambda = grid)
+plot(lasso.mod)
+set.seed(1)
+cv.out <- cv.glmnet(x[train3,], y[train3], alpha = 1)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x[test3,])
+mean((lasso.pred - y.test)^2)
+out <- glmnet(x, y, alpha = 1, lambda = grid)
+lasso.coef <- predict(out, type = "coefficients", s = bestlam)[1:260,]
+lasso.coef
 ```
 
 
