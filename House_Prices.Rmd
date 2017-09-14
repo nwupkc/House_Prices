@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(Amelia)
 library(rpart)
+library(leaps)
 library(glmnet)
 ```
 
@@ -92,7 +93,7 @@ df$LotFrontage[is.na(df$LotFrontage)] <- round(predict(lot.rpart, df[is.na(df$Lo
 
 ggplot(df, aes(LotFrontage, color = Imputed)) + geom_density()
 
-df <- df[, -81]
+df <- df[, -82]
 
 sum(is.na(df$LotFrontage))
 ```
@@ -226,17 +227,119 @@ df[which(is.na(df$KitchenQual)),]$KitchenQual <- 'TA'
 sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
 ```
 
-##Subset Selection
+```{r}
+sum(is.na(df))
+train <- df[1:1460, -1]
+test <- df[1461:2919, -1]
+```
+
+## Linear Regression
+
+Least square regression is designed for n >> p when the number of observations is much larger than the number of variables. However, if n is not much greater than p, then least square fit might suffer from high variance resulting in poor predictions due to overfitting.
+
+```{r}
+lm.mod <- lm(SalePrice ~ ., train)
+summary(lm.mod)
+```
+
+
+## Subset Selection Methods
+
+The limitation of best subset selection is that when variables p becomes very large, the computation becomes infeasible. The rule of thumb is more than 40 variables and we have 80 meaning the computer has to calculate 2^80 different models!
+
+```{r}
+regfit.full <- regsubsets(SalePrice ~ ., train)
+```
+
+### Forward and Backward Stepwise Selection
+
+Fortunately, there is an alternative option which is stepwise selection. The number of models calculated is `r 80(80 + 1)/2 + 1`. In high dimensional settings where p > n backward stepwise selection cannot be used, but we fortunately does not face this situation. 
+
+```{r}
+regfit.fwd <- regsubsets(SalePrice ~ ., data = train, nvmax = 80, method = "forward")
+reg.summary.fwd <- summary(regfit.fwd)
+reg.summary.fwd$rsq
+par(mfrow = c(2, 2))
+plot(reg.summary.fwd$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+plot(reg.summary.fwd$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+which.max(reg.summary.fwd$adjr2)
+points(81, reg.summary.fwd$adjr2[81], col = "red", cex = 2, pch = 20)
+plot(reg.summary.fwd$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
+which.min(reg.summary.fwd$cp)
+points(81, reg.summary.fwd$cp[81], col = "red", cex = 2, pch = 20)
+plot(reg.summary.fwd$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
+which.min(reg.summary.fwd$bic)
+points(47, reg.summary.fwd$bic[41], col = "red", cex = 2, pch = 20)
+
+coef(regfit.fwd, 47)
+
+regfit.bwd <- regsubsets(SalePrice ~ ., data = train, nvmax = 80, method = "backward")
+reg.summary.bwd <- summary(regfit.bwd)
+reg.summary.bwd$rsq
+par(mfrow = c(2, 2))
+plot(reg.summary.bwd$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+plot(reg.summary.bwd$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+which.max(reg.summary.bwd$adjr2)
+points(81, reg.summary.bwd$adjr2[81], col = "red", cex = 2, pch = 20)
+plot(reg.summary.bwd$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
+which.min(reg.summary.bwd$cp)
+points(80, reg.summary.bwd$cp[80], col = "red", cex = 2, pch = 20)
+plot(reg.summary.bwd$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
+which.min(reg.summary.bwd$bic)
+points(44, reg.summary.bwd$bic[44], col = "red", cex = 2, pch = 20)
+
+coef(regfit.bwd, 44)
+```
+
+So, how do we choose the optimal model? We will use validation set and cross-validation approaches. I had to drop few variables with low variance as when I further split the training set to training observations and testing observations, some variables are factors with only one variable.
+
+```{r}
+set.seed(1)
+train2 <- sample(c(TRUE, FALSE), nrow(train), rep = TRUE)
+test2 <- (!train2)
+regfit.fwd <- regsubsets(SalePrice ~ ., data = train[train2,], nvmax = 80, method = "forward")
+test.mat <- model.matrix(SalePrice ~ ., data = train[test2,])
+val.errors <- rep(NA, 80)
+for (i in 80){
+  coefi <- coef(regfit.fwd, id = i)
+  pred <- test.mat[,names(coefi)]%*%coefi
+  val.errors[i] <- mean((train$SalePrice[test2] - pred)^2)
+}
+val.errors
+which.min(val.erros)
+```
+
+```{r}
+k = 10
+set.seed(1)
+folds <- sample(1:k, nrow(train), replace = TRUE)
+cv.errors <- matrix(NA, k, 80, dimnames = list(NULL, paste(1:80)))
+for(j in 1:k){
+  best.fit <- regsubsets(SalePrice ~.-Id, data = train[folds!=j,], nvmax = 80, method = "forward")
+  for(i in 1:80){
+    pred <- predict(best.fit, train[folds == j,], id = i)
+    cv.errors[j,i] <- mean((train$SalePrice[folds == j] - pred)^2)
+  }
+}
+```
+
 
 ## Shrinkage Methods
 
 ### Ridge Regression and the Lasso
 
 ```{r}
-x <- model.matrix(SalePrice~.,train)
+x <- model.matrix(SalePrice~.-Id, train)
 y <- train$SalePrice
-
-ridge.mod <- glmnet(x, y, alpha = 0, lambda)
+grid <- 10 ^ seq(10, -2, length = 100)
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
+dim(coef(ridge.mod))
+ridge.mod$lambda[50]
+coef(ridge.mod)[,50]
+sqrt(sum(coef(ridge.mod)[-1,50]^2))
+ridge.mod$lambda[60]
+coef(ridge.mod)[,60]
+sqrt(sum(coef(ridge.mod)[-1,60]^2))
 ```
 
 
