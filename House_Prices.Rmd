@@ -15,6 +15,8 @@ library(Amelia)
 library(rpart)
 library(leaps)
 library(glmnet)
+library(caret)
+library(pls)
 ```
 
 ```{r, message = FALSE}
@@ -25,9 +27,6 @@ df <- rbind(train, test)
 dim(df)
 str(df)
 ```
-
-
-We are dealing with high-dimensional data and this implies that there is a danger of overfitting.
 
 The big part of this project will be dealing with all the missing values in the data. Depending on what method we use, there will be huge variability in precision of prediction accuracy. With so many missing values it is not advisable to drop all the NAs which will leave us with reduced sample size.
 
@@ -42,13 +41,16 @@ sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
 
 ## Missing Value Imputation
 
-Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition tells me that people did their due dilligence while collecting this data since houses are significant assets in average households.
+Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition is that people did their due dilligence while collecting this data since houses are significant assets in average households.
 
-Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to do so. Given that, we will have to look at all the varialbles with missing values however painstaking it may be.
+Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to do so. Given that, we will have to look at all the varialbles with missing values one by one however painstaking it may be.
 
 Not all variables are informative in predicting the missing values. While data can be missing due to mistakes in data imputation, we cannot dimiss a possibility that missing values are missing because they are truly not applicable. With these considerations in mind, let's look at all the missing values one by one.
 
-I have been inspired by kernels on Kaggle especially for missing value imputation. You will notice that I followed closely for majority of the variables because I did not want to reinvent the wheels. However, I have looked closely at the assumptions made and see if there were better ways impute NAs. I am in no way claiming that my work is superior to that of others. I really appreciate all the hard works they have put into thinking and analyzing this data set. While I believe that other people used valid methods on sound assumptions, I did not hesitate to change things up when I believed there is a better way to do things in my opinion.
+I have been inspired by kernels on Kaggle especially for missing value imputation. You will notice that I have followed closely for majority of the variables since I did not want to reinvent the wheels. However, I have looked closely at the assumptions made and saw if there were better ways to impute the NAs. I am in no way claiming that my work is superior to that of others'. I really appreciate all the hard works they have put into thinking and analyzing this data set. While I believe that other people used valid methods on sound assumptions, I did not hesitate to make judgment calls whenever necessary. The two most influential kernels were:
+
+https://www.kaggle.com/tannercarbonati/detailed-data-analysis-ensemble-modeling
+https://www.kaggle.com/bisaria/handling-missing-data
 
 ```{r}
 df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
@@ -81,6 +83,7 @@ df[which(df$Fireplaces == 0), 'FireplaceQu'] <- 'None'
 ```
 
 We have to make a judgement call as missing values constituted to about 15% of the number of observations. 
+
 ```{r}
 ggplot(df, aes(LotFrontage)) + geom_density()
 
@@ -190,9 +193,12 @@ df[c(1916, 2217, 2905),]$MSZoning <- 'RL'
 df[2251,]$MSZoning <- 'RM'
 ```
 
+Utilities only has 1 value for NoSeWa and the rest AllPub. We can drop this feature from our dataset as the house with ‘NoSeWa’ is from our training set and will have won’t help with any predictive modelling
+
 ```{r}
 table(df$Utilities)
-df[which(is.na(df$Utilities)),]$Utilities <- 'AllPub'
+which(df$Utilities == 'NoSeWa') # in the training data set
+df <- df[,!names(df) %in% c('Utilities')]
 ```
 
 ```{r}
@@ -224,7 +230,7 @@ df[which(is.na(df$KitchenQual)),]$KitchenQual <- 'TA'
 ```
 
 ```{r}
-sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
+sort(sapply(df[,1:79], function(x) sum(is.na(x))), decreasing = T)
 ```
 
 ```{r}
@@ -233,151 +239,220 @@ train <- df[1:1460, -1]
 test <- df[1461:2919, -1]
 ```
 
+```{r}
+cat_features <- names(which(sapply(train, is.character)))
+train[cat_features] <- lapply(train[cat_features] , factor)
+test[cat_features] <- lapply(test[cat_features], factor)
+
+match(lapply(train[cat_features], levels), lapply(test[cat_features], levels))
+lapply(train[cat_features], levels)[[10]]
+lapply(test[cat_features], levels)[[10]]
+cat_features[10]
+table(train$Condition2)
+table(test$Condition2)
+train[which(df$Condition2 %in% c("RRAe", "RRAn", "RRNn")),]$Condition2 <- "Norm"
+train$Condition2 <- factor(train$Condition2)
+
+lapply(train[cat_features], levels)[[12]]
+lapply(test[cat_features], levels)[[12]]
+cat_features[12]
+table(train$HouseStyle)
+table(test$HouseStyle)
+train[which(df$HouseStyle == "2.5Fin"),]$HouseStyle <- "2Story"
+train$HouseStyle <- factor(train$HouseStyle)
+
+lapply(train[cat_features], levels)[[14]]
+lapply(test[cat_features], levels)[[14]]
+cat_features[14]
+table(train$RoofMatl)
+table(test$RoofMatl)
+train[which(df$RoofMatl %in% c("ClyTile", "Membran", "Metal", "Roll")),]$RoofMatl <- "CompShg"
+train$RoofMatl <- factor(train$RoofMatl)
+
+lapply(train[cat_features], levels)[[15]]
+lapply(test[cat_features], levels)[[15]]
+cat_features[15]
+table(train$Exterior1st)
+table(test$Exterior1st)
+train[, c('Exterior1st', 'SalePrice')] %>% 
+  group_by(Exterior1st) %>% 
+  summarise(mean = mean(SalePrice), count = n())
+train[which(df$Exterior1st %in% c("ImStucc", "Stone")),]$Exterior1st <- "CemntBd"
+train$Exterior1st <- factor(train$Exterior1st)
+
+lapply(train[cat_features], levels)[[16]]
+lapply(test[cat_features], levels)[[16]]
+cat_features[16]
+table(train$Exterior2nd)
+table(test$Exterior2nd)
+train[, c('Exterior2nd', 'SalePrice')] %>% 
+  group_by(Exterior2nd) %>% 
+  summarise(mean = mean(SalePrice), count = n())
+train[which(df$Exterior2nd == "Other"),]$Exterior2nd <- "VinylSd"
+train$Exterior2nd <- factor(train$Exterior2nd)
+
+lapply(train[cat_features], levels)[[26]]
+lapply(test[cat_features], levels)[[26]]
+cat_features[26]
+table(train$Heating)
+table(test$Heating)
+train[which(df$Heating %in% c("Floor", "OthW")),]$Heating <- "GasA"
+train$Heating <- factor(train$Heating)
+
+lapply(train[cat_features], levels)[[29]]
+lapply(test[cat_features], levels)[[29]]
+cat_features[29]
+table(train$Electrical)
+table(test$Electrical)
+train[which(df$Electrical == "Mix"),]$Electrical <- "SBrkr"
+train$Electrical <- factor(train$Electrical)
+
+lapply(train[cat_features], levels)[[40]]
+lapply(test[cat_features], levels)[[40]]
+cat_features[40]
+table(train$MiscFeature)
+table(test$MiscFeature)
+train[, c('MiscFeature', 'SalePrice')] %>% 
+  group_by(MiscFeature) %>% 
+  summarise(mean = mean(SalePrice), count = n())
+train[which(df$MiscFeature == "TenC"),]$MiscFeature <- "None"
+train$MiscFeature <- factor(train$MiscFeature)
+match(lapply(train[cat_features], levels), lapply(test[cat_features], levels))
+```
+
+
 ## Linear Regression
 
-Least square regression is designed for n >> p when the number of observations is much larger than the number of variables. However, if n is not much greater than p, then least square fit might suffer from high variance resulting in poor predictions due to overfitting.
+Simple linear regression is historically designed for cases when the number of observations is much larger than the number of variables (i.e. n >> p). However, if n is not much greater than p, then least square fit might suffer from high variance resulting in poor predictions due to overfitting. Fortunately, there are multiple methods for treating overfitting in this case to increase prediction accuracy.
 
 ```{r}
 lm.mod <- lm(SalePrice ~ ., train)
 summary(lm.mod)
+pred <- predict(lm.mod, test, type = "response")
+submit <- data.frame(Id = 1461:2919, SalePrice = pred)
+write.csv(submit, file = "lm.mod.csv", row.names = FALSE)
 ```
 
+0.18707 0.16582
 
 ## Subset Selection Methods
 
-The limitation of best subset selection is that when variables p becomes very large, the computation becomes infeasible. The rule of thumb is more than 40 variables and we have 80 meaning the computer has to calculate 2^80 different models!
+The limitation of best subset selection is that when the number of variables p becomes very large, the computation becomes infeasible. I believe the rule of thumb is more than 40 variables, but we have 78 meaning the computer has to calculate 2^78 possible models!
 
-```{r}
+```{r, error = TRUE}
 regfit.full <- regsubsets(SalePrice ~ ., train)
 ```
 
-### Forward and Backward Stepwise Selection
+Fortunately, there is an alternative option of stepwise selection. The number of models that need to be calculated is pared down to `r 78(78 + 1)/2 + 1`. 
 
-Fortunately, there is an alternative option which is stepwise selection. The number of models calculated is `r 80(80 + 1)/2 + 1`. In high dimensional settings where p > n backward stepwise selection cannot be used, but we fortunately does not face this situation. 
+### Forward Stepwise Selection
+
+Forward stepwise selection starts with a model with no regressors and subsequently add one variable that results in the greatest improvement to the fit.
 
 ```{r}
-regfit.fwd <- regsubsets(SalePrice ~ ., data = train, nvmax = 80, method = "forward")
+regfit.fwd <- regsubsets(SalePrice ~ ., data = train, nvmax = NULL, method = "forward")
 reg.summary.fwd <- summary(regfit.fwd)
-reg.summary.fwd$rsq
 par(mfrow = c(2, 2))
 plot(reg.summary.fwd$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
 plot(reg.summary.fwd$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
 which.max(reg.summary.fwd$adjr2)
-points(81, reg.summary.fwd$adjr2[81], col = "red", cex = 2, pch = 20)
+points(155, reg.summary.fwd$adjr2[155], col = "red", cex = 2, pch = 20)
 plot(reg.summary.fwd$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
 which.min(reg.summary.fwd$cp)
-points(81, reg.summary.fwd$cp[81], col = "red", cex = 2, pch = 20)
+points(101, reg.summary.fwd$cp[101], col = "red", cex = 2, pch = 20)
 plot(reg.summary.fwd$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
 which.min(reg.summary.fwd$bic)
-points(47, reg.summary.fwd$bic[41], col = "red", cex = 2, pch = 20)
+points(47, reg.summary.fwd$bic[47], col = "red", cex = 2, pch = 20)
 
-coef(regfit.fwd, 47)
+test$SalePrice <- 1
+x.test = model.matrix(SalePrice ~ ., data = test)
+coefi = coef(regfit.fwd, id = 47)
+pred = x.test[, names(coefi)] %*% coefi
+submit$SalePrice <- pred
+which(submit$SalePrice < 0)
+submit[1412,]$SalePrice <- -submit[1412,]$SalePrice
+write.csv(submit, file = "forward.csv", row.names = FALSE)
+```
 
-regfit.bwd <- regsubsets(SalePrice ~ ., data = train, nvmax = 80, method = "backward")
+0.22840
+
+### Backward Stepwise Selection
+
+Backward stepwise selection works the exact opposite starting with a model with all the variables and subsequently drops a variable that is least important in terms of fit. In high dimensional settings where p > n backward stepwise selection cannot be used, but we fortunately does not suffer from this situation so we can use it. 
+
+```{r}
+regfit.bwd <- regsubsets(SalePrice ~ ., data = train, nvmax = NULL, method = "backward")
 reg.summary.bwd <- summary(regfit.bwd)
-reg.summary.bwd$rsq
 par(mfrow = c(2, 2))
 plot(reg.summary.bwd$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
 plot(reg.summary.bwd$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
 which.max(reg.summary.bwd$adjr2)
-points(81, reg.summary.bwd$adjr2[81], col = "red", cex = 2, pch = 20)
+points(137, reg.summary.bwd$adjr2[137], col = "red", cex = 2, pch = 20)
 plot(reg.summary.bwd$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
 which.min(reg.summary.bwd$cp)
-points(80, reg.summary.bwd$cp[80], col = "red", cex = 2, pch = 20)
+points(106, reg.summary.bwd$cp[106], col = "red", cex = 2, pch = 20)
 plot(reg.summary.bwd$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
 which.min(reg.summary.bwd$bic)
-points(44, reg.summary.bwd$bic[44], col = "red", cex = 2, pch = 20)
+points(43, reg.summary.bwd$bic[43], col = "red", cex = 2, pch = 20)
 
-coef(regfit.bwd, 44)
+x.test = model.matrix(SalePrice ~ ., data = test)
+coefi = coef(regfit.fwd, id = 43)
+pred = x.test[, names(coefi)] %*% coefi
+submit <- data.frame(Id = 1461:2919, SalePrice = pred)
+which(submit$SalePrice < 0)
+submit[757,]$SalePrice <- -submit[757,]$SalePrice
+write.csv(submit, file = "backward.csv", row.names = FALSE)
 ```
 
-So, how do we choose the optimal model? We will use validation set and cross-validation approaches. I had to drop few variables with low variance as when I further split the training set to training observations and testing observations, some variables are factors with only one variable.
+0.21383
 
-```{r}
-set.seed(1)
-train2 <- sample(c(TRUE, FALSE), nrow(train), rep = TRUE)
-test2 <- (!train2)
-regfit.fwd <- regsubsets(SalePrice ~ ., data = train[train2,], nvmax = 80, method = "forward")
-test.mat <- model.matrix(SalePrice ~ ., data = train[test2,])
-val.errors <- rep(NA, 80)
-for (i in 80){
-  coefi <- coef(regfit.fwd, id = i)
-  pred <- test.mat[,names(coefi)]%*%coefi
-  val.errors[i] <- mean((train$SalePrice[test2] - pred)^2)
-}
-val.errors
-which.min(val.erros)
-```
+We get a widely varying number of features depending on metrics we use.
 
-```{r}
-k = 10
-set.seed(1)
-folds <- sample(1:k, nrow(train), replace = TRUE)
-cv.errors <- matrix(NA, k, 80, dimnames = list(NULL, paste(1:80)))
-for(j in 1:k){
-  best.fit <- regsubsets(SalePrice ~.-Id, data = train[folds!=j,], nvmax = 80, method = "forward")
-  for(i in 1:80){
-    pred <- predict(best.fit, train[folds == j,], id = i)
-    cv.errors[j,i] <- mean((train$SalePrice[folds == j] - pred)^2)
-  }
-}
-```
 
 
 ## Shrinkage Methods
 
-### Ridge Regression and the Lasso
+### Ridge Regression
+
+Next, we will consider ridge regression which constrains the coefficients towards zero. When estimating regression coefficients, we add a shrinkage penalty that penalizes the large values of coefficients effectively bringing down the coefficients near zero. Alpha = 0 means ridge while alpha = 1 means lasso regression. To use the best tuning parameter lambda, we will use cross-validation.
 
 ```{r}
-x <- model.matrix(SalePrice ~ ., train)[,-1]
-y <- train$SalePrice
-grid <- 10 ^ seq(10, -2, length = 100)
-ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
-dim(coef(ridge.mod))
-ridge.mod$lambda[50]
-coef(ridge.mod)[,50]
-sqrt(sum(coef(ridge.mod)[-1,50]^2))
-ridge.mod$lambda[60]
-coef(ridge.mod)[,60]
-sqrt(sum(coef(ridge.mod)[-1,60]^2))
-predict(ridge.mod, s = 50, type = "coefficients")[1:260,]
-set.seed(1)
-train3 <- sample(1:nrow(x), nrow(x)/2)
-test3 <- (-train3)
-y.test <- y[test3]
-ridge.mod <- glmnet(x[train3,], y[train3], alpha = 0, thres = 1e-12)
-ridge.pred <- predict(ridge.mod, s = 4, newx = x[test3,])
-mean((ridge.pred - y.test)^2)
-mean((mean(y[train3])-y.test)^2)
-ridge.pred <- predict(ridge.mod, s = 0, newx = x[test3,], exact = T)
-mean((ridge.pred - y.test)^2)
-lm(y ~ x, subset = train3)
-predict(ridge.mod, s = 0, exact = T, type = "coefficients")[1:260,]
-set.seed(1)
-cv.out <- cv.glmnet(x[train3,],  y[train3], alpha = 0)
-plot(cv.out)
-bestlam <- cv.out$lambda.min
-bestlam
-ridge.pred <- predict(ridge.mod, s = bestlam, newx = x[test3,])
-mean((ridge.pred - y.test)^2)
-out <- glmnet(x, y, alpha = 0)
-predict(out, type = "coefficients", s = bestlam)[1:260,]
+glm.cv.ridge <- cv.glmnet(data.matrix(train)[,-c(1,79)], train$SalePrice, alpha = 0)
+(lambda.ridge <- glm.cv.ridge$lambda.min)
+glm.ridge <- glmnet(x = data.matrix(train)[,-c(1,79)], y = train$SalePrice, alpha = 0, lambda = lambda.ridge )
+test$SalePrice <- NULL
+y_pred.ridge <- as.double(predict(glm.ridge, data.matrix(test)[,-1]))
+submit <- data.frame(Id = 1461:2919, SalePrice = y_pred.ridge)
+write.csv(submit, file = "ridge.csv", row.names = FALSE)
 ```
-```{r}
-lasso.mod <- glmnet(x[train3,], y[train3], alpha = 1, lambda = grid)
-plot(lasso.mod)
-set.seed(1)
-cv.out <- cv.glmnet(x[train3,], y[train3], alpha = 1)
-plot(cv.out)
-bestlam <- cv.out$lambda.min
-lasso.pred <- predict(lasso.mod, s = bestlam, newx = x[test3,])
-mean((lasso.pred - y.test)^2)
-out <- glmnet(x, y, alpha = 1, lambda = grid)
-lasso.coef <- predict(out, type = "coefficients", s = bestlam)[1:260,]
-lasso.coef
-```
+0.15839
 
+### Lasso Regression
+
+```{r}
+glm.cv.lasso <- cv.glmnet(data.matrix(train)[,-c(1,79)], train$SalePrice, alpha = 1)
+(lambda.lasso <- glm.cv.lasso$lambda.min)
+glm.lasso <- glmnet(x = data.matrix(train)[,-c(1,79)], y = train$SalePrice, alpha = 1, lambda = lambda.lasso)
+y_pred.lasso <- as.double(predict(glm.lasso, data.matrix(test)[,-1]))
+submit <- data.frame(Id = 1461:2919, SalePrice = y_pred.lasso)
+write.csv(submit, file = "lasso.csv", row.names = FALSE)
+```
+0.16465
 
 ## Dimension Reduction Methods
 
 ### Principal Components Regression (PCA)
+
+```{r}
+set.seed(1)
+test$SalePrice <- rep(NA, 1459)
+df <- rbind(train, test)
+nzv.data <- nearZeroVar(df, saveMetrics = TRUE)
+drop.cols <- rownames(nzv.data)[nzv.data$nzv == TRUE]
+df2 <- df[,!names(df) %in% drop.cols]
+dim(df2)
+train <- df[1:1460,]
+test <- df[1461:2919,]
+pcr.fit <- pcr(SalePrice ~., data = train, scale = FALSE, validation = "CV")
+```
+
