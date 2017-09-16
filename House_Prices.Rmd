@@ -41,7 +41,7 @@ sort(sapply(df[,1:80], function(x) sum(is.na(x))), decreasing = T)
 
 ## Missing Value Imputation
 
-Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition is that people did their due dilligence while collecting this data since houses are significant assets in average households.
+Dealing with missing value is not so trivial. The easiest case to deal with missing value would be to treat them as missing at random and drop them. However, it is hard to prove that data are missing at random. Given the nature of this data set, my intuition is that the agents did their due dilligence while collecting this data since houses are significant assets in average households.
 
 Mean value substitution is a statistical malpractice. Even though it has desirable feature such as that it does not change the mean, it is not advisable to use it unless has a strong reason to do so. Given that, we will have to look at all the varialbles with missing values one by one however painstaking it may be.
 
@@ -51,6 +51,8 @@ I have been inspired by kernels on Kaggle especially for missing value imputatio
 
 https://www.kaggle.com/tannercarbonati/detailed-data-analysis-ensemble-modeling
 https://www.kaggle.com/bisaria/handling-missing-data
+
+Missing value imputation for variable is reasonable when 5% of the observations are missing unless there is a specific reason to believe otherwise. The problem is we have variables where majority of the observations are missing, so we have to make a judgement call whether to salvage those variables. This is one of those special cases when data are missing for valid reason so we save them. 
 
 ```{r}
 df[which(is.na(df$PoolQC)), c('PoolQC', 'PoolArea')]
@@ -193,7 +195,7 @@ df[c(1916, 2217, 2905),]$MSZoning <- 'RL'
 df[2251,]$MSZoning <- 'RM'
 ```
 
-Utilities only has 1 value for NoSeWa and the rest AllPub. We can drop this feature from our dataset as the house with ‘NoSeWa’ is from our training set and will have won’t help with any predictive modelling
+There is only one value of NoSeWa in Utilities and this is contained only in the training set, so we drop the whole variable as this is not going to helpful when predicting SalePrice for the testing set. This is a very important point, and we will come back to this after we are done dealing with missing values.
 
 ```{r}
 table(df$Utilities)
@@ -238,6 +240,8 @@ sum(is.na(df))
 train <- df[1:1460, -1]
 test <- df[1461:2919, -1]
 ```
+
+While there remains no missing value in the data set, we are not done yet. Remember the Utilities variable? There are categorical variables with more levels for training set than testing set. We will look at each and reduce the levels down to match that of the testing set. We will follow precedent and sensibly impute data whether it be using the most frequent value, other related variables, or just common sense.
 
 ```{r}
 cat_features <- names(which(sapply(train, is.character)))
@@ -323,7 +327,7 @@ match(lapply(train[cat_features], levels), lapply(test[cat_features], levels))
 
 ## Linear Regression
 
-Simple linear regression is historically designed for cases when the number of observations is much larger than the number of variables (i.e. n >> p). However, if n is not much greater than p, then least square fit might suffer from high variance resulting in poor predictions due to overfitting. Fortunately, there are multiple methods for treating overfitting in this case to increase prediction accuracy.
+Simple linear regression is historically designed for cases when the number of observations is much larger than the number of variables (i.e. n >> p). However, if n is not much greater than p, then least square fit might suffer from high variance resulting in poor predictions due to overfitting. Fortunately, there are multiple methods for treating overfitting in this case to increase prediction accuracy. 
 
 ```{r}
 lm.mod <- lm(SalePrice ~ ., train)
@@ -335,19 +339,22 @@ write.csv(submit, file = "lm.mod.csv", row.names = FALSE)
 
 0.18707 0.16582
 
+
 ## Subset Selection Methods
 
-The limitation of best subset selection is that when the number of variables p becomes very large, the computation becomes infeasible. I believe the rule of thumb is more than 40 variables, but we have 78 meaning the computer has to calculate 2^78 possible models!
+Our main focus from here on would be to explore possible options to deal with overfitting which leads to high predictive accuracy.
+
+The limitation of the best subset selection is that when the number of variables p becomes very large, the computation becomes infeasible. I believe the rule of thumb is more than 40 variables, but we have 243 meaning the computer has to calculate 2^243 possible models! Why do we have 243 variables? It is because dummy variables are created for categorical variables which have value 1 for that specific value and 0 for others. Therefore, the true number of variables is the number of numerical variables plus the number of all the levels of factor variables.
 
 ```{r, error = TRUE}
 regfit.full <- regsubsets(SalePrice ~ ., train)
 ```
 
-Fortunately, there is an alternative option of stepwise selection. The number of models that need to be calculated is pared down to `r 78(78 + 1)/2 + 1`. 
+Fortunately, there is an alternative option of stepwise selection.
 
 ### Forward Stepwise Selection
 
-Forward stepwise selection starts with a model with no regressors and subsequently add one variable that results in the greatest improvement to the fit.
+Forward stepwise selection starts with a model with no regressors and subsequently add one variable that results in the greatest improvement to the fit. The advantage over the best subset selection is that the number of models that need to be calculated is pared down to `r 243(243 + 1)/2 + 1`. Forward stepwise selection is different from best subset selection in that if the variable is added in the previous steps, it cannot be taken out in the subsequent steps even if it may not be optimal selection for the model with specific number of features.
 
 ```{r}
 regfit.fwd <- regsubsets(SalePrice ~ ., data = train, nvmax = NULL, method = "forward")
@@ -364,11 +371,11 @@ plot(reg.summary.fwd$bic, xlab = "Number of Variables", ylab = "BIC", type = "l"
 which.min(reg.summary.fwd$bic)
 points(47, reg.summary.fwd$bic[47], col = "red", cex = 2, pch = 20)
 
-test$SalePrice <- 1
+test$SalePrice <- 0
 x.test = model.matrix(SalePrice ~ ., data = test)
 coefi = coef(regfit.fwd, id = 47)
 pred = x.test[, names(coefi)] %*% coefi
-submit$SalePrice <- pred
+submit <- data.frame(Id = 1461:2919, SalePrice = pred)
 which(submit$SalePrice < 0)
 submit[1412,]$SalePrice <- -submit[1412,]$SalePrice
 write.csv(submit, file = "forward.csv", row.names = FALSE)
@@ -406,8 +413,7 @@ write.csv(submit, file = "backward.csv", row.names = FALSE)
 
 0.21383
 
-We get a widely varying number of features depending on metrics we use.
-
+We get a widely varying number of best features depending on metrics we use. However, I performed prediction only on the lowest values for forward and backward stepwise selection as there seems to be not much difference for values of Cp and Adjusted RSq for the lowest to the highest number.
 
 
 ## Shrinkage Methods
@@ -438,21 +444,3 @@ submit <- data.frame(Id = 1461:2919, SalePrice = y_pred.lasso)
 write.csv(submit, file = "lasso.csv", row.names = FALSE)
 ```
 0.16465
-
-## Dimension Reduction Methods
-
-### Principal Components Regression (PCA)
-
-```{r}
-set.seed(1)
-test$SalePrice <- rep(NA, 1459)
-df <- rbind(train, test)
-nzv.data <- nearZeroVar(df, saveMetrics = TRUE)
-drop.cols <- rownames(nzv.data)[nzv.data$nzv == TRUE]
-df2 <- df[,!names(df) %in% drop.cols]
-dim(df2)
-train <- df[1:1460,]
-test <- df[1461:2919,]
-pcr.fit <- pcr(SalePrice ~., data = train, scale = FALSE, validation = "CV")
-```
-
